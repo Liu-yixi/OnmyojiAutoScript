@@ -9,8 +9,8 @@
     "description": "description"
   },
   {
-    "itemName": "main_goto_exploration_9",
-    "imageName": "main9_main_goto_exploration_9.png",
+    "itemName": "main_goto_exsploration_9",
+    "imageName": "main9_main_goto_exsploration_9.png",
     "roiFront": "553,107,31,30",
     "roiBack": "234,98,904,68",
     "method": "Template matching",

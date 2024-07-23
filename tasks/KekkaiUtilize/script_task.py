@@ -36,7 +36,7 @@ class ScriptTask(GameUi, ReplaceShikigami, KekkaiUtilizeAssets):
         self.check_box_ap_or_exp(con.box_ap_enable, con.box_exp_enable, con.box_exp_waste)
 
         # 收菜看看
-        self.check_utilize_harvest()
+        # self.check_utilize_harvest()
         self.realm_goto_grown()
         # 无论收不收到菜，都会进入看看至少看一眼时间还剩多少
         self.screenshot()

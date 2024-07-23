@@ -116,12 +116,6 @@ class ScriptTask(GeneralBattle, GeneralInvite, GeneralBuff, GeneralRoom, GameUi,
 
 
 
-
-
-
-
-
-
     def run_leader(self):
         logger.info('Start run leader')
         self.ui_get_current_page()

@@ -174,7 +174,8 @@ class GeneralInvite(BaseTask, GeneralInviteAssets):
         退出房间
         :return:
         """
-        if not self.is_in_room():
+        if not self.is_in_room() and \
+                    not self.appear_then_click(self.I_GI_SURE, interval=0.5):
             return False
         logger.info('Exit room')
         while 1:

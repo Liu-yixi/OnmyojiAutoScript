@@ -20,6 +20,9 @@ from module.exception import (GameNotRunningError,
                               RequestHumanTakeover,
                               EmulatorNotRunningError)
 from module.logger import logger
+from module.device.safety_screen import violation_visible
+from module.exception import RuntimeSafetyStop
+from module.config.runtime_safety import RuntimeSafetyState
 
 
 class Device(Platform, Screenshot, Control, AppControl):
@@ -31,6 +34,11 @@ class Device(Platform, Screenshot, Control, AppControl):
     stuck_long_wait_list = ['BATTLE_STATUS_S', 'PAUSE', 'LOGIN_CHECK', 'PREPARE_BEFORE_BATTLE']
 
     def __init__(self, *args, **kwargs):
+        # Detection history and timers belong to one device/account.
+        self.detect_record = set()
+        self.click_record = deque(maxlen=15)
+        self.stuck_timer = Timer(60, count=60).start()
+        self.stuck_timer_long = Timer(300, count=300).start()
         for trial in range(4):
             try:
                 super().__init__(*args, **kwargs)
@@ -112,7 +120,17 @@ class Device(Platform, Screenshot, Control, AppControl):
         if self.handle_night_commission():
             super().screenshot()
 
+        self.check_safety_screen()
         return self.image
+
+    def check_safety_screen(self):
+        if not hasattr(self, '_runtime_safety'):
+            self._runtime_safety = RuntimeSafetyState(self.config.config_name)
+        self._runtime_safety.ensure_running()
+        if violation_visible(getattr(self, 'image', None)):
+            reason = 'Violation notice detected; inspect the account before resuming'
+            self._runtime_safety.stop(reason)
+            raise RuntimeSafetyStop(reason)
 
     def release_during_wait(self):
         # Scrcpy server is still sending video stream,
@@ -163,6 +181,7 @@ class Device(Platform, Screenshot, Control, AppControl):
             raise GameNotRunningError('Game died')
 
     def handle_control_check(self, button):
+        self.check_safety_screen()
         self.stuck_record_clear()
         self.click_record_add(button)
         self.click_record_check()

@@ -23,6 +23,8 @@ Preserve these workstreams in separate commits. Do not overwrite the fork's `mas
 
 ## Known unresolved issues
 
+This list records the initial baseline. See [runtime-safety.md](runtime-safety.md) for the subsequent runtime-safety changes, their validation and remaining limitations.
+
 - Activity count limit reads a counter that is not updated by the current battle flow.
 - Activity resource OCR can drop leading digits; a single zero reading can stop the task incorrectly.
 - The midnight activity supply popup can leave the script clicking the underlying challenge button.

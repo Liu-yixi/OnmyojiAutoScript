@@ -18,6 +18,7 @@ from tasks.Component.GeneralBuff.general_buff import GeneralBuff
 from tasks.Component.GeneralBattle.battle_wait import BattleWait
 
 from module.logger import logger
+from module.exception import RuntimeSafetyStop
 
 
 class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
@@ -55,6 +56,7 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
         """
         timeout_timer = Timer(timeout).start()
         confed = False
+        prepare_clicks = 0
         while not timeout_timer.reached():
             self.screenshot()
             if self.is_in_real_battle(False):  # 战斗阶段
@@ -73,7 +75,12 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
                         timeout_timer.reset()
                         continue
                 # 点击准备(锁定阵容自动点准备,不锁定阵容前面也已经配置完毕需要点准备)
+                if prepare_clicks >= 3:
+                    raise RuntimeSafetyStop('Battle preparation did not advance after 3 clicks')
                 if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                    prepare_clicks += 1
+                    if prepare_clicks == 3:
+                        self.device.sleep(1.5)
                     timeout_timer.reset()
                     continue
                 continue
@@ -176,10 +183,14 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
         # 战斗过程 随机点击和滑动 防封
         logger.info("Start battle process")
         win: bool = False
+        prepare_retries = 0
         while 1:
             self.screenshot()
             # 准备点击未生效或进场较慢时继续尝试，避免只等结算。
+            if prepare_retries >= 3 and self.appear(self.I_PREPARE_HIGHLIGHT):
+                raise RuntimeSafetyStop('Battle wait preparation failed after 3 retries')
             if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                prepare_retries += 1
                 logger.info("Retry prepare before battle")
                 self.device.stuck_record_add('BATTLE_STATUS_S')
                 continue
@@ -274,10 +285,14 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
         self.device.click_record_clear()
 
         logger.info("Start battle process")
+        prepare_retries = 0
         while 1:
             self.screenshot()
             # 准备点击未生效或进场较慢时继续尝试，避免只等结算。
+            if prepare_retries >= 3 and self.appear(self.I_PREPARE_HIGHLIGHT):
+                raise RuntimeSafetyStop('Battle wait preparation failed after 3 retries')
             if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                prepare_retries += 1
                 logger.info("Retry prepare before battle")
                 self.device.stuck_record_add('BATTLE_STATUS_S')
                 continue

@@ -15,7 +15,9 @@ from module.atom.click import RuleClick
 from module.atom.ocr import RuleOcr
 from module.base.protect import random_sleep
 from module.base.timer import Timer
-from module.exception import TaskEnd
+from module.exception import TaskEnd, RuntimeSafetyStop, TaskRest
+from module.config.runtime_safety import RuntimeSafetyState
+from module.device.safety_screen import matches
 from module.logger import logger
 
 from tasks.base_task import BaseTask
@@ -112,6 +114,10 @@ class StateMachine(BaseTask):
         更新全局状态
         """
 
+        rest_check = getattr(self.device, 'task_rest_check', None)
+        if rest_check and rest_check():
+            raise TaskRest('Configured sleep window or active time limit reached')
+
         def get_count(self) -> int:
             return self.count_map[self.climb_type]
 
@@ -150,6 +156,12 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
 
     def run(self) -> None:
         self.limit_time: timedelta = self.conf.general_climb.limit_time_v
+        self.run_idx = 0
+        self.progress = RuntimeSafetyState(self.config.config_name)
+        self.progress.ensure_running()
+        counts = self.progress.begin_activity()
+        self._last_activity_items = self.progress.read()['activity'].get('last_items')
+        self._count_map = {mode: counts.get(mode, 0) for mode in self.conf.general_climb.run_sequence_v}
         #
         for climb_type in self.conf.general_climb.run_sequence_v:
             # 进入到活动的主页面，不是具体的战斗页面
@@ -162,9 +174,8 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
                 self.ui_click(self.I_UI_BACK_YELLOW, stop=self.I_TO_BATTLE_MAIN, interval=2.8)
             except LimitTimeOut as e:
                 break
-            finally:
-                # 切换下一个爬塔类型
-                self.switch_next()
+            # Unexpected errors must not claim completion or reset the budget.
+            self.switch_next()
 
         # 返回庭院
         logger.hr("Exit Shikigami", 2)
@@ -173,6 +184,7 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
         if self.conf.general_climb.active_souls_clean:
             self.set_next_run(task='SoulsTidy', success=False, finish=False, target=datetime.now())
         self.set_next_run(task="ActivityShikigami", success=True)
+        self.progress.finish_activity()
         raise TaskEnd
 
     def _run_pass(self):
@@ -278,24 +290,49 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
         logger.hr(f'Start run climb type AP100')
 
     def start_battle(self):
-        click_times, max_times = 0, random.randint(4, 8)
+        click_times, max_times = 0, 3
+        reserved = False
+        entry_timer = Timer(30).start()
+        supply_clicks = 0
         while 1:
             self.screenshot()
+            if entry_timer.reached():
+                raise RuntimeSafetyStop('Activity entry made no progress for 30 seconds')
+            if matches(self.device.image, 'activity_supply', (620, 105, 430, 155)):
+                if supply_clicks >= 2:
+                    raise RuntimeSafetyStop('Activity supply popup did not close')
+                self.click(RuleClick((1135, 174, 42, 36), (1135, 174, 42, 36), 'activity_supply_close'))
+                supply_clicks += 1
+                self.device.sleep(1)
+                continue
             if self.is_in_battle(False):
                 break
             if click_times >= max_times:
-                logger.warning(f'Climb {self.climb_type} cannot enter, maybe already end, try next')
-                return
-            if (self.appear_then_click(self.I_UI_CONFIRM_SAMLL, interval=1) or
-                    self.appear_then_click(self.I_UI_CONFIRM, interval=1) ):
-                continue
+                raise RuntimeSafetyStop(f'Activity entry failed after {max_times} challenge clicks')
+            # Unknown confirmations can include purchases or restrictions.
+            if self.appear(self.I_UI_CONFIRM_SAMLL) or self.appear(self.I_UI_CONFIRM):
+                raise RuntimeSafetyStop('Unexpected confirmation while entering activity battle')
             if (self.appear(self.I_CHECK_BATTLE_MAIN, interval=1) or self.appear(self.I_CHECK_BATTLE_BOSS, interval=1)) \
-                    and  self.ocr_appear_click(self.O_FIRE, interval=2):
-                click_times += 1
-                logger.info(f'Try click fire, remain times[{max_times - click_times}]')
-                continue
+                    and self.ocr_appear(self.O_FIRE):
+                if not reserved:
+                    self.reserve_battle()
+                    reserved = True
+                if self.ocr_appear_click(self.O_FIRE, interval=2):
+                    click_times += 1
+                    logger.info(f'Try click fire, remain times[{max_times - click_times}]')
+                    if click_times == max_times:
+                        self.device.sleep(3)  # Allow the last accepted click to finish its transition.
+        if not reserved:
+            self.reserve_battle()
         # 运行战斗
-        self.run_general_battle(config=self.get_general_battle_conf())
+        return self.run_general_battle(config=self.get_general_battle_conf())
+
+    def reserve_battle(self):
+        # Reserve before the first challenge click, so a process crash cannot
+        # restore the entire budget. An uncertain attempt may consume one slot.
+        self.put_status()
+        limit = getattr(self.conf.general_climb, self.climb_type + '_limit', 0)
+        self.count_map[self.climb_type] = self.progress.reserve_activity(self.climb_type, limit)
 
     # def battle_wait(self, random_click_swipt_enable: bool) -> bool:
     #     # 通用战斗结束判断
@@ -414,13 +451,34 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
         if self.climb_type == 'ap':
             # 拾光永恒：一次体力挑战同时消耗 6 体力和 1 个活动道具。
             stamina = self.O_REMAIN_AP.ocr(self.device.image)
-            items = self.O_REMAIN_AP_ITEM.ocr(self.device.image)
+            items = self.read_activity_items()
             return stamina >= 6 and items >= 1
         if self.climb_type == 'boss':
             _, remain_times, _ = self.O_REMAIN_BOSS.ocr_digit_counter(self.device.image)
         if self.climb_type == 'ap100':
             remain_times = self.O_REMAIN_AP100.ocr_digit(self.device.image)
         return remain_times > 0
+
+    def read_activity_items(self):
+        samples = []
+        for _ in range(3):
+            self.screenshot()
+            value = self.O_REMAIN_AP_ITEM.ocr(self.device.image)
+            if isinstance(value, int) and value >= 0:
+                samples.append(value)
+        if len(samples) != 3:
+            raise RuntimeSafetyStop('Activity resource OCR failed; refusing to guess')
+        items = sorted(samples)[1]
+        if max(samples) - min(samples) > 5:
+            raise RuntimeSafetyStop(f'Activity resource OCR disagrees: {samples}')
+        previous = getattr(self, '_last_activity_items', None)
+        if previous is not None and previous - items > 5:
+            raise RuntimeSafetyStop(f'Activity resource count dropped unexpectedly: {previous} -> {items}')
+        self._last_activity_items = items
+        progress = getattr(self, 'progress', None)
+        if progress is not None:
+            progress.record_activity_items(items)
+        return items
 
     def get_general_battle_conf(self) -> tasks.Component.GeneralBattle.config_general_battle.GeneralBattleConfig:
         from tasks.Component.GeneralBattle.config_general_battle import GeneralBattleConfig as gbc

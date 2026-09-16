@@ -43,6 +43,8 @@ class AreaBossAssets:
 	C_AB_BOSS_REWARD_PHOTO_MINUS_1 = RuleClick(roi_front=(940,585,95,70), roi_back=(940,585,95,70), name="ab_boss_reward_photo_minus_1")
 	# 当前选择 的极地鬼层数 
 	C_AB_JI_FLOOR_SELECTED = RuleClick(roi_front=(380,120,70,30), roi_back=(380,120,70,30), name="ab_ji_floor_selected")
+	# 左侧今日挑战入口(展开/收起面板)
+	C_AB_DAILY_CHALLENGE = RuleClick(roi_front=(20,360,100,90), roi_back=(20,360,100,90), name="ab_daily_challenge")
 
 
 	# Swipe Rule Assets
@@ -101,6 +103,8 @@ class AreaBossAssets:
 	I_AB_GROUP_RANK_NONE = RuleImage(roi_front=(890,415,95,85), roi_back=(890,415,95,85), threshold=0.8, method="Template matching", file="./tasks/AreaBoss/res/ab_rank_none.png")
 	# 挑战数进度条 
 	I_AB_NUM_CHALLENGE_RAIL = RuleImage(roi_front=(895,639,14,27), roi_back=(895,639,14,27), threshold=0.8, method="Template matching", file="./tasks/AreaBoss/res/ab_num_challenge_rail.png")
+	# 挑战评分/分享页底部分享按钮行
+	I_AB_SCORE_SHARE = RuleImage(roi_front=(850,640,260,65), roi_back=(700,600,510,120), threshold=0.8, method="Template matching", file="./tasks/AreaBoss/res/ab_score_share.png")
 
 
 	# Ocr Rule Assets
@@ -118,5 +122,7 @@ class AreaBossAssets:
 	O_AB_BOSS_NAME = RuleOcr(roi=(114,36,248,69), area=(114,36,248,69), mode="Full", method="Default", keyword="", name="ab_boss_name")
 	# 声望值 
 	O_AB_REPUTATION = RuleOcr(roi=(1180,61,82,32), area=(1180,61,82,32), mode="Digit", method="Default", keyword="", name="ab_reputation")
+	# 今日挑战槽位文本(空槽显示未选择)
+	O_AB_DAILY_SLOTS = RuleOcr(roi=(140,390,330,45), area=(140,390,330,45), mode="Single", method="Default", keyword="", name="ab_daily_slots")
 
 

@@ -196,5 +196,14 @@
     "method": "Template matching",
     "threshold": 0.8,
     "description": "挑战数进度条"
+  },
+  {
+    "itemName": "ab_score_share",
+    "imageName": "ab_score_share.png",
+    "roiFront": "850,640,260,65",
+    "roiBack": "700,600,510,120",
+    "method": "Template matching",
+    "threshold": 0.8,
+    "description": "挑战评分/分享页底部分享按钮行"
   }
 ]

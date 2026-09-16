@@ -8,6 +8,7 @@ import numpy as np
 import random
 import re
 from module.atom.click import RuleClick
+from module.base.timer import Timer
 from tasks.base_task import BaseTask
 from tasks.Component.GeneralBattle.general_battle import GeneralBattle
 from tasks.GameUi.game_ui import GameUi
@@ -61,37 +62,68 @@ class ScriptTask(GeneralBattle, GameUi, SwitchSoul, AreaBossAssets):
         self.ui_get_current_page()
         self.ui_goto(page_area_boss)
 
-        # 已挑战鬼王数量
-        boss_fought = 0
+        # 先查「今日挑战」已完成次数，识别失败按 0 处理（后续流程兜底）
+        fought = self.get_daily_fought_count()
+        # 动态获取可挑战次数（声望决定每日上限）
+        dynamic_count = self._get_dynamic_boss_count()
+        remaining = dynamic_count - (fought if fought is not None else 0)
+        if remaining <= 0:
+            logger.info('Daily area boss challenges are already complete')
+            self.go_back()
+            self.set_next_run(task='AreaBoss', success=True, finish=False)
+            raise TaskEnd
+
         if con.boss_reward:
-            if self.fight_reward_boss():  # 挑战成功则加一
-                boss_fought += 1
+            if self.fight_reward_boss():  # 挑战成功则剩余次数减一
+                remaining -= 1
 
         self.open_filter()
         # 切换到对应集合(热门/收藏)
         if con.use_collect:
-            self.switch_to_collect()
+            has_available_boss = self.switch_to_collect()
         else:
-            self.switch_to_famous()
+            has_available_boss = self.switch_to_famous()
 
-        # 动态获取可挑战次数
-        dynamic_count = self._get_dynamic_boss_count()
-        available = dynamic_count - boss_fought
-        if available >= 3:
-            self.boss_fight(self.I_BATTLE_1)
-            self.boss_fight(self.I_BATTLE_2)
-            self.boss_fight(self.I_BATTLE_3)
-        elif available == 2:
-            self.boss_fight(self.I_BATTLE_1)
-            self.boss_fight(self.I_BATTLE_2)
-        elif available == 1:
-            self.boss_fight(self.I_BATTLE_1)
+        if has_available_boss:
+            for battle in (self.I_BATTLE_1, self.I_BATTLE_2, self.I_BATTLE_3):
+                if remaining <= 0:
+                    break
+                if self.boss_fight(battle):
+                    remaining -= 1
+        else:
+            logger.info("No area boss available in filter list")
         # 退出
         self.go_back()
         self.set_next_run(task='AreaBoss', success=True, finish=False)
 
         # 以抛出异常的形式结束
         raise TaskEnd
+
+    def get_daily_fought_count(self):
+        """
+        在地域鬼王主界面展开左侧「今日挑战」面板，识别今天已完成的挑战次数。
+        面板空槽显示「未选择」，已完成则显示鬼王头像。
+        :return: 已完成次数(0-3)，识别失败返回 None
+        """
+        logger.info('Check daily area boss challenge count')
+        expand_timer = Timer(8).start()
+        while 1:
+            self.screenshot()
+            # 面板展开后左侧是一条深色底纹，收起时是浅色的地图
+            bar = self.device.image[355:445, 140:470]
+            if bar.mean() < 120:
+                break
+            if expand_timer.reached():
+                logger.warning('Expand daily challenge panel timeout')
+                return None
+            self.click(self.C_AB_DAILY_CHALLENGE, interval=2)
+        text = self.O_AB_DAILY_SLOTS.ocr(self.device.image)
+        empty = max(0, min(3, text.count('未选择')))
+        fought = 3 - empty
+        logger.info(f'Daily area boss fought: {fought}/3 (ocr: {text})')
+        # 收起面板，避免遮挡地图
+        self.click(self.C_AB_DAILY_CHALLENGE, interval=2)
+        return fought
 
     def go_back(self) -> None:
         """
@@ -162,10 +194,11 @@ class ScriptTask(GeneralBattle, GameUi, SwitchSoul, AreaBossAssets):
             return False
 
         # 如果已经打过该BOSS,直接跳过不打了
+        # 注意：今日挑战面板的计数已包含它，所以返回 False 表示本次没有新打
         if self.is_group_ranked():
             logger.warning("There is no boss could be challenged")
             self.ui_click_until_disappear(self.I_AB_CLOSE_RED, interval=3)
-            return True
+            return False
 
         # 根据 reward_floor 决定模式
         if reward_floor in (AreaBossFloor.ONE, AreaBossFloor.TEN):
@@ -185,9 +218,34 @@ class ScriptTask(GeneralBattle, GameUi, SwitchSoul, AreaBossAssets):
         if not self.start_fight():
             result = False
             logger.warning("Area Boss Fight Failed ")
-        self.wait_until_appear(self.I_AB_CLOSE_RED)
+        # 每日次数用完后挑战胜利没有奖励结算页，而是停在评分/分享页，先退出来
+        self.exit_score_page()
+        if not self.wait_until_appear(self.I_AB_CLOSE_RED, wait_time=15):
+            logger.warning('Not in boss detail page after fight, back to map')
+            back_timer = Timer(10).start()
+            while 1:
+                self.screenshot()
+                if self.appear(self.I_FILTER):
+                    break
+                if back_timer.reached():
+                    logger.warning('Cannot back to area boss map')
+                    break
+                self.appear_then_click(self.I_UI_BACK_BLUE, interval=2)
+            return False
         self.ui_click_until_disappear(self.I_AB_CLOSE_RED, interval=1)
         return result
+
+    def exit_score_page(self):
+        """
+        每日挑战次数用完后，挑战胜利会停在评分/分享页而不是奖励结算页。
+        检测到评分/分享页就点左上角返回键退出。
+        """
+        for _ in range(6):
+            self.screenshot()
+            if not self.appear(self.I_AB_SCORE_SHARE):
+                return
+            logger.info('Exit boss score/share page')
+            self.appear_then_click(self.I_UI_BACK_BLUE, interval=1.5)
 
     def start_fight(self) -> bool:
         while 1:
@@ -456,23 +514,29 @@ class ScriptTask(GeneralBattle, GameUi, SwitchSoul, AreaBossAssets):
         logger.info("openFilter")
         self.ui_click(self.I_FILTER, self.I_AB_FILTER_OPENED, interval=3)
 
-    def switch_to_collect(self):
+    def switch_to_collect(self) -> bool:
         while 1:
             self.screenshot()
             if self.appear(self.I_AB_FILTER_TITLE_COLLECTION):
-                break
+                return True
             if self.appear(self.I_AB_FILTER_OPENED):
                 self.click(self.C_AB_COLLECTION_BTN, 1.5)
                 continue
+            # 筛选面板处于关闭状态时不再死等，由调用方决定如何处理
+            if self.appear(self.I_FILTER):
+                return False
 
-    def switch_to_famous(self):
+    def switch_to_famous(self) -> bool:
         while 1:
             self.screenshot()
             if self.appear(self.I_AB_FILTER_TITLE_FAMOUS):
-                break
+                return True
             if self.appear(self.I_AB_FILTER_OPENED):
                 self.click(self.C_AB_FAMOUS_BTN, 1.5)
                 continue
+            # 筛选面板处于关闭状态时不再死等，由调用方决定如何处理
+            if self.appear(self.I_FILTER):
+                return False
 
     def switch_to_reward(self):
         self.open_filter()

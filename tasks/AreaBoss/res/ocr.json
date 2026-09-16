@@ -61,5 +61,14 @@
     "method": "Default",
     "keyword": "",
     "description": "声望值"
+  },
+  {
+    "itemName": "ab_daily_slots",
+    "roiFront": "140,390,330,45",
+    "roiBack": "140,390,330,45",
+    "mode": "Single",
+    "method": "Default",
+    "keyword": "",
+    "description": "今日挑战槽位文本(空槽显示未选择)"
   }
 ]

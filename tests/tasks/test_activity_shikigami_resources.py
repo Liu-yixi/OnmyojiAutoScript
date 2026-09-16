@@ -13,6 +13,7 @@ class ActivityResourcesTest(unittest.TestCase):
                 task.wait_until_appear.return_value = True
                 task.O_REMAIN_AP.ocr.return_value = stamina
                 task.O_REMAIN_AP_ITEM.ocr.return_value = items
+                task.read_activity_items.return_value = items
                 self.assertEqual(ScriptTask.check_tickets_enough(task), expected)
 
 

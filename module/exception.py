@@ -58,5 +58,13 @@ class RequestHumanTakeover(Exception):
     # Alas is unable to handle such error, probably because of wrong settings.
     pass
 
+
+class RuntimeSafetyStop(RequestHumanTakeover):
+    """Stop automation until the operator has inspected and cleared the cause."""
+
+
+class TaskRest(Exception):
+    """Pause at a task's safe boundary to observe configured rest limits."""
+
 class TaskEnd(Exception):
     pass

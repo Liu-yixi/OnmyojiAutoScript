@@ -52,3 +52,14 @@ class AntiBanGuard:
                 self._active_seconds_today = 0.0
                 wake = max(wake, self._rest_until) if wake else self._rest_until
         return wake
+
+    def task_rest_due(self, started, config, now=None):
+        """Check at a safe task boundary, never by adding random input."""
+        if not config.enable:
+            return False
+        now = now or datetime.now()
+        if self._in_sleep_window(now.time(), config.sleep_start, config.sleep_end):
+            return True
+        self._roll_day(now.date())
+        limit = config.daily_active_limit.total_seconds()
+        return limit > 0 and self._active_seconds_today + max(0, (now - started).total_seconds()) >= limit

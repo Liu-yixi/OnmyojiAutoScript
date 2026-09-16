@@ -18,7 +18,7 @@ from module.atom.list import RuleList
 from module.atom.ocr import RuleOcr
 from module.base.decorator import run_once
 from module.base.timer import Timer
-from module.exception import (GameNotRunningError, GamePageUnknownError)
+from module.exception import (GameNotRunningError, GamePageUnknownError, RuntimeSafetyStop)
 from module.logger import logger
 from tasks.Component.GeneralBattle.assets import GeneralBattleAssets
 from tasks.GameUi.assets import GameUiAssets
@@ -207,6 +207,7 @@ class GameUi(BaseTask, GameUiAssets):
         :return: find destination page or timeout reached
         """
         logger.hr(f"UI goto {destination}")
+        self._navigation_failures = {}
         # 初始化
         timeout_timer = Timer(timeout).start()
         confirm_timer = Timer(confirm_wait, count=int(confirm_wait // 0.5)).start()
@@ -237,7 +238,7 @@ class GameUi(BaseTask, GameUiAssets):
                     self.ui_current = None
         else:
             logger.error(f'Cannot goto page[{destination}], timeout[{timeout}s] reached')
-        return False
+        raise RuntimeSafetyStop(f'Navigation to {destination} timed out without reaching the page')
 
     def try_close_unknown_page(self, skip_screenshot: bool = True):
         """
@@ -290,6 +291,8 @@ class GameUi(BaseTask, GameUiAssets):
                 if isinstance(button, list):
                     primary_operated = False
                     for idx, btn in enumerate(button):
+                        if attempts_list[idx] >= max_attempts_per_button:
+                            continue
                         click_interval = 2.5 if attempts_list[idx] >= max_attempts_per_button else 0.8
                         attempt =  self.appear_then_operate(btn, interval=click_interval, skip_first_screenshot=False)
                         if attempt:
@@ -315,8 +318,14 @@ class GameUi(BaseTask, GameUiAssets):
                 if self.ui_wait_until_appear(next_page, timeout=2.5, skip_first_screenshot=False):
                     logger.info(f'[{max_wait_timer.current():.1f}s]Page arrived {next_page}')
                     self.ui_current = next_page
+                    self._navigation_failures.pop((current_page.name, next_page.name), None)
                     break
             else:
+                key = (current_page.name, next_page.name)
+                failures = self._navigation_failures.get(key, 0) + 1
+                self._navigation_failures[key] = failures
+                if failures >= 3:
+                    raise RuntimeSafetyStop(f'Navigation {key} failed 3 times without reaching destination')
                 # 重新获取当前页
                 self.ui_get_current_page(skip_first_screenshot=False)
         return self.ui_current == path[-1]

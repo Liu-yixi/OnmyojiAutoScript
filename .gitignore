@@ -273,3 +273,4 @@ console.bat
 tasks/AutoCheckinBigGod/frida-server-17.6.2-android-x86_64
 oas.bat
 config/task_windows/
+config/runtime_safety/

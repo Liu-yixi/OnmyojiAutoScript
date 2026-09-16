@@ -31,6 +31,7 @@ from module.config.config import Config
 from module.config.config_model import ConfigModel
 from module.config.instance_guard import InstanceGuard
 from module.config.anti_ban import AntiBanGuard
+from module.config.runtime_safety import RuntimeSafetyState
 from module.config.task_windows import apply_pending
 from module.device.device import Device
 from module.device.env import IS_WINDOWS
@@ -64,6 +65,7 @@ class Script:
         # 跨进程排队管理器（仅在 queue_mode=True 时初始化）
         self.instance_guard: InstanceGuard = None
         self.anti_ban_guard: AntiBanGuard = AntiBanGuard()
+        self.runtime_safety = RuntimeSafetyState(config_name)
 
     @cached_property
     def config(self) -> "Config":
@@ -342,7 +344,9 @@ class Script:
             if task.next_run <= now:
                 # Acquiring a shared execution token may have crossed a window end.
                 task = self.config.get_next()
-                if task.next_run > datetime.now():
+                refreshed_now = datetime.now()
+                rest_until = self.anti_ban_guard.wake_time(refreshed_now, self.config.script.anti_ban)
+                if task.next_run > refreshed_now or (rest_until and rest_until > refreshed_now):
                     continue
                 batch = getattr(task, 'batch', None)
                 self.config.window_run_context = dict(batch, command=task.command) if batch else None
@@ -571,6 +575,9 @@ class Script:
             return False
 
         try:
+            self.runtime_safety.ensure_running()
+            started = datetime.now()
+            self.device.task_rest_check = lambda: self.anti_ban_guard.task_rest_due(started, self.config.script.anti_ban)
             self.device.screenshot()
             module_name = 'script_task'
             module_path = str(Path.cwd() / 'tasks' / command / (module_name+'.py'))
@@ -580,11 +587,22 @@ class Script:
         except TaskEnd:
             return True
         except GameNotRunningError as e:
+            if not self.runtime_safety.record_recovery(command):
+                self.stop_for_safety(e, command)
             logger.warning(e)
             self.exception_handler(e=e, command=command)
             self.config.task_call('Restart')
             return True
+        except RuntimeSafetyStop as e:
+            self.stop_for_safety(e, command)
+        except TaskRest as e:
+            logger.info(f'Pause {command} at safe boundary: {e}')
+            self.config.task_delay(task=command, target=datetime.now() + self.config.script.anti_ban.long_rest_duration,
+                                   server=False)
+            return True
         except (GameStuckError, GameTooManyClickError) as e:
+            if isinstance(e, GameTooManyClickError) or not self.runtime_safety.record_recovery(command):
+                self.stop_for_safety(e, command)
             logger.error(e)
             self.save_error_log()
             self.exception_handler(e=e, command=command)
@@ -595,6 +613,8 @@ class Script:
             self.device.sleep(10)
             return False
         except GameBugError as e:
+            if not self.runtime_safety.record_recovery(command):
+                self.stop_for_safety(e, command)
             logger.warning(e)
             self.save_error_log()
             self.exception_handler(e=e, command=command)
@@ -604,6 +624,8 @@ class Script:
             self.device.sleep(10)
             return False
         except GamePageUnknownError as e:
+            if not self.runtime_safety.record_recovery(command):
+                self.stop_for_safety(e, command)
             logger.info('Game server may be under maintenance or network may be broken, check server status now')
             # 这个还不重要 留着坑填
             logger.critical('Game page unknown')
@@ -632,11 +654,30 @@ class Script:
             self.config.notifier.push(title=f'{I18n.trans_zh_cn(command)}{command}', content=f"<{self.config_name}> Exception occured")
             exit(1)
 
+    def stop_for_safety(self, error, command):
+        """Latch the account before saving evidence or notifying; never restart."""
+        reason = f'{command}: {error}'
+        self.runtime_safety.stop(reason)
+        logger.critical(f'Runtime safety stop: {reason}')
+        try:
+            if 'device' in self.__dict__:
+                try:
+                    self.save_error_log()
+                except Exception:
+                    logger.exception('Could not save safety-stop screenshot')
+            self.config.notifier.push(title='OAS runtime safety stop', content=reason)
+        finally:
+            raise SystemExit(1)
+
     def loop(self):
         """
         Main loop of scheduler.
         :return:
         """
+        try:
+            self.runtime_safety.ensure_running()
+        except RuntimeSafetyStop as e:
+            self.stop_for_safety(e, 'Startup')
         with _log_switch_lock:
             logger.set_file_logger(self.config_name, do_cleanup=True)
         if apply_pending(self.config_name):

@@ -40,6 +40,15 @@ class ScriptTask(GameUi, GeneralBattle, HeroTestAssets, SwitchSoul):
         self.init_pages()
         self.ui_goto_page(self.page_hero_mode)
         self.check_and_lock_team()
+        # 上次中断可能残留「请选择奖励」选技能界面，它不是已知页面，
+        # 不先清掉的话 ui_get_current_page 会直接报 Unknown ui page 退出任务
+        self.screenshot()
+        if self.appear(self.I_BCMJ_SKILL_ADD_CONFIRM):
+            logger.warning('Found leftover skill selection panel, clear it first')
+            if self.conf.herotest.layer == Layer.MENGXU:
+                self.hero2_skill_wait()
+            elif self.conf.herotest.layer == Layer.MIJING:
+                self.hero1_skill_wait()
         while True:
             if self.limit_time is not None and self.limit_time + self.start_time < datetime.now():
                 logger.info("Time out")
@@ -116,6 +125,12 @@ class ScriptTask(GameUi, GeneralBattle, HeroTestAssets, SwitchSoul):
                 continue
             if win is None and random_click_swipt_enable:
                 self.random_click_swipt()
+            if win is not None:
+                # 胜利/结算后若点到奖励物品图标会弹出说明弹窗(物品tooltip)遮挡画面,
+                # 无任何匹配时点空白处关闭弹窗, 防止等FIRE卡死
+                self.device.click(x=640, y=250)
+                self.device.sleep(1)
+                continue
         logger.info(f'Battle win = {win}')
         return win
 
@@ -170,16 +185,16 @@ class ScriptTask(GameUi, GeneralBattle, HeroTestAssets, SwitchSoul):
             SkillMode.PVP: pvp_skill,
         }
         target_skills = target_skill_dict[self.conf.herotest.skill_mode]
+        # 升级版祝福(如琴月齐鸣·弥天/咏叹巧韵·涤尘)等未收录卡片无法命中模板,
+        # 10秒未选中则兜底点第一张卡, 防止死循环卡死(同时兜住PVP空列表)
         timer = Timer(10).start()
         while True:
             self.screenshot()
-            if timer.reached_and_reset():
-                if self.appear(self.I_BCMJ_SKILL_ADD_CONFIRM):
-                    logger.warning('No skill selected for 10s, panel still open, retrying')
-                    continue
-                logger.warning('Skill selection panel closed unexpectedly, exit')
+            if timer.reached():
+                logger.warning('No known skill matched for 10s, click first card as fallback')
+                self.device.click(x=198, y=486)
                 break
-            if any(self.appear_then_click(ts, interval=1) for ts in target_skills):
+            if target_skills and any(self.appear_then_click(ts, interval=1) for ts in target_skills):
                 break
         self.ui_click_until_disappear(self.I_BCMJ_SKILL_ADD_CONFIRM, interval=1.5)
         return True

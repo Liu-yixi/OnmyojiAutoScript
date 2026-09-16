@@ -417,8 +417,9 @@ class ScriptTask(GameUi, GeneralBattle, DemonEncounterAssets, SwitchSoul):
                         if not self.appear(self.I_UI_REWARD, threshold=0.6):
                             logger.info('Get reward success')
                             break
-                        # 一直点击
+                        # 一直点击，每次点击后等 0.5 秒给横幅消失动画留出时间
                         if self.ui_reward_appear_click():
+                            time.sleep(0.5)
                             continue
                     break
                 # 如果没有出现红色关闭按钮，说明答题结束

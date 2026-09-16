@@ -4,6 +4,8 @@
 import time
 
 from module.logger import logger
+from module.base.timer import Timer
+from module.exception import GameStuckError
 
 from tasks.GameUi.page import page_main, page_guild
 from tasks.GameUi.game_ui import GameUi
@@ -63,55 +65,45 @@ class Scales(Buy, MallNavbar):
                     continue
 
     def _scales_buy_more(self, start_click, number: int = None):
-        # 重写
         self._scales_buy_confirm(start_click, number)
-
-        # 购买确认
-        while 1:
-            self.screenshot()
-            if self.appear(self.I_SCA_SIX_STAR) or self.appear(self.I_SCA_REWARD):
-                logger.info('Scales buy success')
-                time.sleep(1)
-                while 1:
-                    self.screenshot()
-                    if not self.appear(self.I_SCA_SIX_STAR):
-                        break
-                    if self.click(self.C_SCA_SOULS_BACK, interval=1):
-                        continue
-                # 收获购买的东西
-                logger.info('Scales get success')
-                break
-
-            if self.click(self.C_BUY_MORE, interval=5):
-                continue
+        self._scales_wait_result(start_click, select_soul=False)
 
     def _scales_buy_sea_more(self, start_click, number: int = None):
         self._scales_buy_confirm(start_click, number)
-        while 1:
-            self.screenshot()
-            if self.appear(self.I_SCA_SELECT_1):
-                break
-            if self.click(self.C_BUY_MORE, interval=3):
-                continue
-        logger.info('Scales start select souls')
-        # 选择魂
-        while 1:
-            self.screenshot()
-            if self.appear(self.I_SCA_SIX_STAR):
-                logger.info('Scales buy success')
-                time.sleep(1.8)
-                while 1:
-                    self.screenshot()
-                    if not self.appear(self.I_SCA_SIX_STAR):
-                        break
-                    if self.click(self.C_SCA_SOULS_GET, interval=1.6):
-                        continue
-                # 收获购买的东西
-                logger.info('Scales get success')
-                break
+        self._scales_wait_result(start_click, select_soul=True)
 
-            if self.appear_then_click(self.I_SCA_SELECT_1, interval=1.6):
+    def _scales_wait_result(self, start_click, select_soul: bool):
+        """兼容选择御魂、直接领奖和兑换后直接返回礼盒页的流程。"""
+        timeout = Timer(30).start()
+        shop_timer = Timer(1, count=2).start()
+        while not timeout.reached():
+            self.screenshot()
+            # 购买弹窗消失且礼盒页持续可见时停止，不能再盲点原确认坐标。
+            in_dialog = self.appear(self.I_BUY_PLUS)
+            if (not in_dialog and self.appear(start_click)
+                    and self.appear(self.I_MALL_SCCALES_CHECK)):
+                if shop_timer.reached():
+                    logger.info('Scales purchase dialog closed, returned to shop')
+                    return
                 continue
+            shop_timer.reset()
+
+            if self.ui_reward_appear_click():
+                continue
+            if self.appear(self.I_SCA_SIX_STAR) or self.appear(self.I_SCA_REWARD):
+                action = self.C_SCA_SOULS_GET if select_soul else self.C_SCA_SOULS_BACK
+                self.click(action, interval=1.6)
+                continue
+            if select_soul and self.appear_then_click(self.I_SCA_SELECT_1, interval=1.6):
+                continue
+            if self.appear(self.I_UI_CONFIRM_SAMLL):
+                self.ui_click_until_disappear(self.I_UI_CONFIRM_SAMLL, interval=1)
+                logger.warning('Scales purchase limit reached')
+                return
+            if in_dialog:
+                self.click(self.C_BUY_MORE, interval=5)
+                continue
+        raise GameStuckError('Scales purchase did not return to shop within 30 seconds')
 
     def _scales_orochi_new(self, buy_number: int):
         """
@@ -368,5 +360,4 @@ if __name__ == '__main__':
     t = Scales(c, d)
 
     t.execute_scales()
-
 

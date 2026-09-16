@@ -6,7 +6,7 @@ import time
 
 from module.logger import logger
 
-from tasks.GameUi.page import page_main, page_guild
+from tasks.GameUi.page import page_main, page_guild, page_mall
 from tasks.GameUi.game_ui import GameUi
 from tasks.Component.Buy.buy import Buy
 from tasks.RichMan.assets import RichManAssets
@@ -86,10 +86,15 @@ class MallNavbar(GameUi, RichManAssets):
 
     def back_mall(self):
         """
-        返回商城
+        返回商城；如果已经退出到庭院，也视为退出完成。
         :return:
         """
-        self.ui_click(self.I_UI_BACK_YELLOW, self.I_CHECK_MALL)
+        while True:
+            self.screenshot()
+            if self.ui_page_appear(page_main) or self.ui_page_appear(page_mall):
+                logger.info('Left mall subpage')
+                return
+            self.appear_then_click(self.I_UI_BACK_YELLOW, interval=1.5)
 
     def mall_resource(self, index: int) -> int:
         """
@@ -155,4 +160,3 @@ if __name__ == '__main__':
     c = Config('oas1')
     d = Device(c)
     t = MallNavbar(c, d)
-

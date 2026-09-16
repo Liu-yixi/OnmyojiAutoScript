@@ -48,6 +48,16 @@ class OrochiConfig(ConfigBase):
     # 是否御魂结束检测是否出现真蛇
     check_true_orochi_enable: bool = Field(default=False, description='check_true_orochi_enable_help')
 
+class TeamSyncConfig(ConfigBase):
+    # 组队同步：两个实例都启动御魂任务并就绪后，队长再邀请队员
+    sync_enable: bool = Field(default=False, description='sync_enable_help')
+    # 队友的实例名（即 config 目录下对方的配置名，如 oppo）
+    partner_name: str = Field(default='', description='sync_partner_name_help')
+    # 队长等待队友就绪的超时时间，超时后本次任务结束并按 retry_interval 重试
+    wait_timeout: Time = Field(default=Time(minute=30), description='sync_wait_timeout_help')
+    # 等待超时后的重试间隔（分钟）
+    retry_interval: int = Field(default=5, description='sync_retry_interval_help')
+
 class SwitchSoulConfig(BaseSwitchSoulConfig):
     enable: bool = Field(default=False)
     switch_group_team: str = Field(default='-1,-1', description='switch_group_team_help')
@@ -71,4 +81,5 @@ class Orochi(ConfigBase):
     invite_config: InviteConfig = Field(default_factory=InviteConfig)
     general_battle_config: GeneralBattleConfig = Field(default_factory=GeneralBattleConfig)
     switch_soul: SwitchSoulConfig = Field(default_factory=SwitchSoulConfig)
+    team_sync: TeamSyncConfig = Field(default_factory=TeamSyncConfig)
 

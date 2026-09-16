@@ -15,6 +15,8 @@ from tasks.GameUi.page import page_main, page_soul_zones, page_shikigami_records
 from tasks.Orochi.assets import OrochiAssets
 from tasks.Orochi.config import Orochi, UserStatus, Layer
 from tasks.TrueOrochi.assets import TrueOrochiAssets
+from module.base.timer import Timer
+from module.config.team_sync import TeamSync
 from module.logger import logger
 from module.exception import TaskEnd
 
@@ -36,6 +38,13 @@ class ScriptTask(GeneralBattle, GeneralInvite, GeneralBuff, GeneralRoom, GameUi,
                                          self.config.orochi.switch_soul.team_name)
         # 根据选层切换御魂
         self.orochi_switch_soul()
+
+        # 组队同步屏障：双方都就绪后队长才去邀请，放在开加成之前避免空等浪费加成
+        if not self.team_sync_barrier():
+            retry = self.config.orochi.team_sync.retry_interval
+            logger.warning(f'Team sync timeout, retry after {retry} minutes')
+            self.set_next_run('Orochi', target=datetime.now() + timedelta(minutes=retry))
+            raise TaskEnd
 
         limit_count = self.config.orochi.orochi_config.limit_count
         limit_time = self.config.orochi.orochi_config.limit_time
@@ -124,15 +133,45 @@ class ScriptTask(GeneralBattle, GeneralInvite, GeneralBuff, GeneralRoom, GameUi,
                 if self.appear_then_click(self.I_OROCHI_LOCK, interval=1):
                     continue
 
-
-
-
-
-
-
-
-
-
+    def team_sync_barrier(self) -> bool:
+        """
+        双实例组队同步屏障。
+        队长和队员启动任务后都先写入 ready；队员写完按原流程等邀请即可，
+        队长则在庭院等待队员就绪，确认双方都在线后才去建房邀请。
+        :return: False 表示队长等待队友超时
+        """
+        sync_config = self.config.orochi.team_sync
+        if not sync_config.sync_enable:
+            return True
+        user_status = self.config.orochi.orochi_config.user_status
+        if user_status not in (UserStatus.LEADER, UserStatus.MEMBER):
+            return True
+        sync = TeamSync(scope='orochi', config_name=self.config.config_name)
+        sync.set_phase('ready')
+        if user_status == UserStatus.MEMBER:
+            return True
+        partner = sync_config.partner_name
+        if not partner:
+            logger.warning('Team sync enabled but partner name is empty, skip waiting')
+            return True
+        wait_time = sync_config.wait_timeout
+        wait_second = wait_time.hour * 3600 + wait_time.minute * 60 + wait_time.second
+        logger.info(f'Wait partner {partner} ready, timeout {wait_second} seconds')
+        # 回到庭院等待，保持截图防止长时间无操作
+        self.ui_get_current_page()
+        self.ui_goto(page_main)
+        timer = Timer(wait_second)
+        timer.start()
+        while 1:
+            self.screenshot()
+            if timer.reached():
+                return False
+            # ready 时间戳的有效窗口略大于等待超时，覆盖双方都长时间等待的情况
+            if sync.partner_ready(partner, stale_seconds=wait_second * 1.5):
+                sync.mark_synced(partner)
+                logger.info(f'Partner {partner} is ready, start inviting')
+                return True
+            sleep(3)
 
     def run_leader(self):
         logger.info('Start run leader')

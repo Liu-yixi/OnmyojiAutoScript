@@ -96,6 +96,8 @@ class ReplaceShikigami(BaseTask, ReplaceShikigamiAssets):
                         7: self.C_SHIKIGAMI_LEFT_7}
         click_match = _click_match[shikigami_order]
         TIMEOUT_SEC = 120          # 超时时长（秒）
+        MAX_CONFIRM_FAIL = 6       # 确认放置的最多次数，超过说明被游戏拒绝（如已寄养其他式神）
+        confirm_count = 0          # 已点击确认放置的次数
         start_time = time.time()   # 记录起始时间
         click_interval_timer = Timer(1.5).start()  # 点击选择式神间隔
         clicked = False
@@ -107,7 +109,7 @@ class ReplaceShikigami(BaseTask, ReplaceShikigamiAssets):
             # 恢复点击操作
             if click_interval_timer.reached_and_reset():
                 clicked = False
-            
+
             self.screenshot()
 
             if not self.appear(stop_image):
@@ -115,6 +117,12 @@ class ReplaceShikigami(BaseTask, ReplaceShikigamiAssets):
 
             if self.appear_then_click(self.I_U_CONFIRM_SMALL, interval=0.5):
                 clicked = False  # 点击了确认, 恢复选式神的操作
+                confirm_count += 1
+                if confirm_count >= MAX_CONFIRM_FAIL:
+                    # 确认多次后 "+" 空位仍在，说明放置一直被游戏拒绝
+                    # （典型的就是「寄养失败：已寄养其他式神」），放弃本次而不是干等到超时
+                    logger.warning('寄养放置多次被拒绝（可能已在别处寄养），放弃本次寄养')
+                    return
                 continue
 
             # 是否育成候补式神按钮

@@ -68,6 +68,110 @@ class ScriptTask(GameUi, ReplaceShikigami, KekkaiUtilizeAssets):
                 logger.warning(f'第[{i}]次检查寮收获寮收获,失败')
             self.ui_goto(page_main)
 
+    def check_my_utilize(self) -> bool:
+        """
+        在式神育成界面，通过右上角「我的寄养」检查当前寄养状态。
+        寄养到期后不收取会一直占着寄养名额，此时直接去蹭卡会被游戏拒绝
+        （寄养失败：已寄养其他式神），所以先确认状态再决定要不要进蹭卡流程。
+        :return: True  本次不蹭卡（活跃寄养已按剩余时间调度 / 状态不明稍后重试）
+                 False 没有寄养（或到期寄养已领取），可以进入蹭卡流程
+        """
+        self.screenshot()
+        # 活跃寄养：右上角直接显示倒计时
+        remaining = self.O_UTILIZE_RES_TIME.ocr(self.device.image)
+        if isinstance(remaining, timedelta) and remaining.total_seconds() > 0:
+            logger.info(f'Already utilizing, remaining: {remaining}')
+            now = datetime.now()
+            next_time = now + remaining
+            min_interval = self.config.kekkai_utilize.utilize_config.min_run_interval
+            if min_interval and min_interval.total_seconds() > 0:
+                next_time = max(next_time, now + min_interval)
+            self.set_next_run(task='KekkaiUtilize', target=next_time)
+            return True
+        # 没有寄养：右上角显示「放置好友寄养」入口，可以直接走蹭卡流程
+        # （注意即使显示入口，也可能存在到期未领取的寄养，由 set_shikigami 的拒绝检测兜底）
+        if self.appear(self.I_UTILIZE_ADD):
+            return False
+        # 既没倒计时也没入口：大概率是到期未领取（卡片+可领取角标），
+        # 点右侧「我的寄养」标签看弹窗
+        enter_timer = Timer(6).start()
+        while 1:
+            self.screenshot()
+            if '寄养位置' in self.O_MY_UTILIZE_POPUP_TITLE.ocr(self.device.image):
+                break
+            if self.appear(self.I_U_ENTER_REALM):
+                logger.info('No utilize now, enter utilize page')
+                return False
+            if self.appear(self.I_UTILIZE_ADD):
+                return False
+            if enter_timer.reached():
+                logger.warning('Check my utilize timeout, skip this round')
+                self.save_image(wait_time=0, push_flag=False, content='检查我的寄养超时')
+                self.set_next_run(task='KekkaiUtilize', target=datetime.now() + timedelta(minutes=30))
+                return True
+            self.click(self.C_MY_UTILIZE_TAB, interval=1)
+        # 弹出「寄养位置」：读剩余时间区分活跃寄养和到期未领取
+        self.screenshot()
+        remain_text = self.O_MY_UTILIZE_REMAIN.ocr(self.device.image)
+        logger.info(f'My utilize popup remain text: {remain_text}')
+        remaining = self._parse_chinese_duration(remain_text)
+        if remaining.total_seconds() > 60:
+            logger.info(f'Already utilizing, remaining: {remaining}')
+            self._close_my_utilize_popup()
+            now = datetime.now()
+            next_time = now + remaining
+            min_interval = self.config.kekkai_utilize.utilize_config.min_run_interval
+            if min_interval and min_interval.total_seconds() > 0:
+                next_time = max(next_time, now + min_interval)
+            self.set_next_run(task='KekkaiUtilize', target=next_time)
+            return True
+        # 到期未领取：确认按钮行确实有「领取」再点
+        # （防止把活跃弹窗的「取消寄养」误识别成领取而取消寄养）
+        button_text = self.O_MY_UTILIZE_BUTTONS.ocr(self.device.image)
+        if '领取' in button_text or '收取' in button_text:
+            logger.info('Utilize finished, collect it')
+            area = self.O_MY_UTILIZE_COLLECT.ocr(self.device.image)
+            if area != (0, 0, 0, 0):
+                x, y, w, h = area
+                self.device.click(x=x + w // 2, y=y + h // 2, control_name='my_utilize_collect')
+            else:
+                # OCR 定位不到就点弹窗按钮的常规位置
+                self.device.click(x=740, y=544, control_name='my_utilize_collect')
+            time.sleep(1)
+            self._close_my_utilize_popup()
+            return False
+        # 弹窗内容无法识别：截图留证，30 分钟后再试
+        logger.warning(f'Unknown my utilize popup: {remain_text}')
+        self.save_image(wait_time=0, push_flag=False, content='我的寄养弹窗无法识别')
+        self._close_my_utilize_popup()
+        self.set_next_run(task='KekkaiUtilize', target=datetime.now() + timedelta(minutes=30))
+        return True
+
+    @staticmethod
+    def _parse_chinese_duration(text: str) -> timedelta:
+        """
+        解析「剩余时间:5小时24分钟28秒」这类中文时长，解析失败返回 0
+        """
+        hour = re.search(r'(\d+)\s*小时', text)
+        minute = re.search(r'(\d+)\s*分钟', text)
+        second = re.search(r'(\d+)\s*秒', text)
+        if not (hour or minute or second):
+            return timedelta(0)
+        return timedelta(hours=int(hour.group(1)) if hour else 0,
+                         minutes=int(minute.group(1)) if minute else 0,
+                         seconds=int(second.group(1)) if second else 0)
+
+    def _close_my_utilize_popup(self):
+        """
+        关闭「寄养位置」弹窗（点击弹窗外的空白区域）
+        """
+        for _ in range(5):
+            self.screenshot()
+            if '寄养位置' not in self.O_MY_UTILIZE_POPUP_TITLE.ocr(self.device.image):
+                return
+            self.device.click(x=150, y=650, control_name='close_my_utilize_popup')
+            time.sleep(0.5)
+
     def check_utilize_add(self):
         con = self.config.kekkai_utilize.utilize_config
         while 1:
@@ -84,18 +188,8 @@ class ScriptTask(GameUi, ReplaceShikigami, KekkaiUtilizeAssets):
             self.realm_goto_grown()
             self.screenshot()
 
-            if not self.appear(self.I_UTILIZE_ADD):
-                remaining_time = self.O_UTILIZE_RES_TIME.ocr(self.device.image)
-                if not isinstance(remaining_time, timedelta):
-                    logger.warning('Ocr remaining time error')
-                logger.info(f'Utilize remaining time: {remaining_time}')
-                # 已经蹭上卡了，设置下次蹭卡时间  # 减少30秒
-                # remaining_time = remaining_time - timedelta(seconds=30)
-                next_time = datetime.now() + remaining_time
-                min_interval = con.min_run_interval
-                if min_interval and min_interval.total_seconds() > 0:
-                    next_time = max(next_time, datetime.now() + min_interval)
-                self.set_next_run(task='KekkaiUtilize', target=next_time)
+            # 先查「我的寄养」确认寄养状态：活跃寄养按剩余时间调度，到期未领取先领取
+            if self.check_my_utilize():
                 return
             if not self.grown_goto_utilize():
                 logger.info('Utilize failed, exit')
@@ -152,6 +246,15 @@ class ScriptTask(GameUi, ReplaceShikigami, KekkaiUtilizeAssets):
         while 1:
             self.screenshot()
 
+            # 体力详情面板：点体力图标收取时会顺带弹出，它会挡住奖励横幅的点击，
+            # 导致横幅一直消不掉（AP 图标与奖励横幅被反复交替点击直到 GameTooManyClick）
+            if self.appear(self.I_GUILD_AP_DETAIL):
+                logger.info('Close guild ap detail panel')
+                # 点面板和横幅之外的空白处关闭面板
+                self.device.click(x=150, y=400, control_name='close_guild_ap_detail')
+                timer_check.reset()
+                continue
+
             # 获得奖励
             if self.ui_reward_appear_click():
                 timer_check.reset()
@@ -179,8 +282,10 @@ class ScriptTask(GameUi, ReplaceShikigami, KekkaiUtilizeAssets):
                 timer_check.reset()
                 continue
 
-            # 收体力
-            if self.appear_then_click(self.I_GUILD_AP, interval=1):
+            # 收体力（奖励横幅上展示的体力图标会误匹配 I_GUILD_AP，
+            # 横幅还在时先不做收取判断，否则会对横幅上的图标反复误点）
+            if not self.appear(self.I_UI_REWARD, threshold=0.6) \
+                    and self.appear_then_click(self.I_GUILD_AP, interval=1):
                 # 等待1秒，看到获得奖励
                 time.sleep(1)
                 logger.info('appear_click guild_ap success')

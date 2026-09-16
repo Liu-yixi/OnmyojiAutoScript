@@ -79,5 +79,14 @@
     "method": "Template matching",
     "threshold": 0.8,
     "description": "展开的寮活动横幅"
+  },
+  {
+    "itemName": "guild_ap_detail",
+    "imageName": "ku_guild_ap_detail.png",
+    "roiFront": "720,265,220,95",
+    "roiBack": "640,150,460,300",
+    "method": "Template matching",
+    "threshold": 0.8,
+    "description": "体力详情面板(获取途径)"
   }
 ]

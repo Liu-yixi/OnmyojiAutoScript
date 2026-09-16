@@ -25,5 +25,41 @@
     "method": "Default",
     "keyword": "",
     "description": "斗鱼或太古寄养数目"
+  },
+  {
+    "itemName": "my_utilize_popup_title",
+    "roiFront": "540,130,200,40",
+    "roiBack": "540,130,200,40",
+    "mode": "Single",
+    "method": "Default",
+    "keyword": "",
+    "description": "我的寄养弹窗标题(寄养位置)"
+  },
+  {
+    "itemName": "my_utilize_remain",
+    "roiFront": "430,395,420,45",
+    "roiBack": "430,395,420,45",
+    "mode": "Single",
+    "method": "Default",
+    "keyword": "",
+    "description": "我的寄养弹窗剩余时间行"
+  },
+  {
+    "itemName": "my_utilize_collect",
+    "roiFront": "430,505,420,75",
+    "roiBack": "430,505,420,75",
+    "mode": "Full",
+    "method": "Default",
+    "keyword": "领取",
+    "description": "我的寄养弹窗领取按钮"
+  },
+  {
+    "itemName": "my_utilize_buttons",
+    "roiFront": "430,505,420,75",
+    "roiBack": "430,505,420,75",
+    "mode": "Single",
+    "method": "Default",
+    "keyword": "",
+    "description": "我的寄养弹窗按钮行文本"
   }
 ]

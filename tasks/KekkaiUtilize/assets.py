@@ -29,6 +29,8 @@ class KekkaiUtilizeAssets:
 	I_GUILD_COLLAPSE = RuleImage(roi_front=(28,159,19,22), roi_back=(12,125,88,101), threshold=0.8, method="Template matching", file="./tasks/KekkaiUtilize/ku/ku_guild_collapse.png")
 	# 展开的寮活动横幅 
 	I_GUILD_EXPAND = RuleImage(roi_front=(264,162,16,18), roi_back=(212,102,110,124), threshold=0.8, method="Template matching", file="./tasks/KekkaiUtilize/ku/ku_guild_expand.png")
+	# 体力详情面板(获取途径)
+	I_GUILD_AP_DETAIL = RuleImage(roi_front=(720,265,220,95), roi_back=(640,150,460,300), threshold=0.8, method="Template matching", file="./tasks/KekkaiUtilize/ku/ku_guild_ap_detail.png")
 
 
 	# Swipe Rule Assets
@@ -74,6 +76,8 @@ class KekkaiUtilizeAssets:
 	C_SELECT_REALM_4 = RuleClick(roi_front=(300,520,200,50), roi_back=(300,520,200,50), name="select_realm_4")
 	# 点击识别到的卡(用识别到的坐标填充作用) 
 	C_SELECT_CARD = RuleClick(roi_front=(0,0,0,0), roi_back=(0,0,0,0), name="select_card")
+	# 右侧我的寄养标签(竖排文字)
+	C_MY_UTILIZE_TAB = RuleClick(roi_front=(1015,20,60,170), roi_back=(1015,20,60,170), name="my_utilize_tab")
 
 
 	# Image Rule Assets
@@ -151,6 +155,14 @@ class KekkaiUtilizeAssets:
 	O_BOX_EXP = RuleOcr(roi=(654,538,179,39), area=(654,538,179,39), mode="DigitCounter", method="Default", keyword="", name="box_exp")
 	# 斗鱼或太古寄养数目 
 	O_CARD_NUM = RuleOcr(roi=(800,421,150,33), area=(800,421,150,33), mode="Single", method="Default", keyword="", name="card_num")
+	# 我的寄养弹窗标题(寄养位置)
+	O_MY_UTILIZE_POPUP_TITLE = RuleOcr(roi=(540,130,200,40), area=(540,130,200,40), mode="Single", method="Default", keyword="", name="my_utilize_popup_title")
+	# 我的寄养弹窗剩余时间行
+	O_MY_UTILIZE_REMAIN = RuleOcr(roi=(430,395,420,45), area=(430,395,420,45), mode="Single", method="Default", keyword="", name="my_utilize_remain")
+	# 我的寄养弹窗领取按钮
+	O_MY_UTILIZE_COLLECT = RuleOcr(roi=(430,505,420,75), area=(430,505,420,75), mode="Full", method="Default", keyword="领取", name="my_utilize_collect")
+	# 我的寄养弹窗按钮行文本
+	O_MY_UTILIZE_BUTTONS = RuleOcr(roi=(430,505,420,75), area=(430,505,420,75), mode="Single", method="Default", keyword="", name="my_utilize_buttons")
 
 
 	# Swipe Rule Assets

@@ -10,18 +10,18 @@
   },
   {
     "itemName": "remain_ap",
-    "roiFront": "944,28,63,27",
-    "roiBack": "943,26,63,30",
-    "mode": "DigitCounter",
+    "roiFront": "1134,15,99,35",
+    "roiBack": "1134,15,99,35",
+    "mode": "Quantity",
     "method": "Default",
     "keyword": "",
     "description": "体力的数量检测"
   },
   {
     "itemName": "remain_pass",
-    "roiFront": "563,26,50,29",
-    "roiBack": "563,26,49,28",
-    "mode": "DigitCounter",
+    "roiFront": "773,16,64,31",
+    "roiBack": "773,16,64,31",
+    "mode": "Digit",
     "method": "Default",
     "keyword": "",
     "description": "活动体力的剩余检测"
@@ -70,5 +70,14 @@
     "method": "Default",
     "keyword": "将魂试炼",
     "description": "进入100体活动标识"
+  },
+  {
+    "itemName": "remain_ap_item",
+    "roiFront": "580,15,82,35",
+    "roiBack": "580,15,82,35",
+    "mode": "Digit",
+    "method": "Default",
+    "keyword": "",
+    "description": "拾光永恒体力挑战所需活动道具余量"
   }
 ]

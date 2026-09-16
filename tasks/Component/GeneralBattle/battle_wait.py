@@ -320,6 +320,9 @@ class BattleWait(BaseTask):
         return []
 
     def reward_exclude_click(self, areas: list[str] = None, name: str = 'success_exclude_click') -> RuleClickExclude:
+        # 未配置时沿用默认结算避让区域；显式 [] 表示不排除任何区域。
+        if areas is None:
+            areas = self.exclude_button_stage_1
         inputs = []
         for area in areas:
             click = getattr(self, area, None)
@@ -594,7 +597,6 @@ if __name__ == '__main__':
     test_battle_wait.battle_wait(random_click_swipt_enable=1)
     with battle_wait_strategy(sequence='completion > interrupt > success > failure > idle').with_options(options={"setup": {"11": "11"}}):
         test_battle_wait.battle_wait()
-
 
 
 

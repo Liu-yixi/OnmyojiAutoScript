@@ -288,6 +288,7 @@ class GameUi(BaseTask, GameUiAssets):
                 if timeout_timer.reached():
                     return False
                 if isinstance(button, list):
+                    primary_operated = False
                     for idx, btn in enumerate(button):
                         click_interval = 2.5 if attempts_list[idx] >= max_attempts_per_button else 0.8
                         attempt =  self.appear_then_operate(btn, interval=click_interval, skip_first_screenshot=False)
@@ -295,8 +296,11 @@ class GameUi(BaseTask, GameUiAssets):
                             attempts_list[idx] += 1
                         # 只要第一个成功就跳出
                         if attempt and idx == 0:
+                            primary_operated = True
                             break
-                if self.appear_then_operate(button, interval=0.8, skip_first_screenshot=False):
+                    if primary_operated:
+                        break
+                elif self.appear_then_operate(button, interval=0.8, skip_first_screenshot=False):
                     break
             else:
                 logger.warning(f'Failed recognize {button} on {current_page}')

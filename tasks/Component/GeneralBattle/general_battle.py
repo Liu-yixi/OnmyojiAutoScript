@@ -51,7 +51,7 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
 
     def battle_before(self, buff: BuffClass | list[BuffClass], config: GeneralBattleConfig, timeout: float = 5) -> bool:
         """战斗前设置
-        :return: True:进入战斗或点击了准备按钮且识别不到准备按钮了 False:超过timeout s还没有进入战斗且没有点击过准备
+        :return: True:确认进入战斗 False:超过timeout s未确认进入战斗；配置完成和点击准备后重新计时
         """
         timeout_timer = Timer(timeout).start()
         confed = False
@@ -69,8 +69,12 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
                         self.switch_preset_team(config.preset_enable, config.preset_group, config.preset_team)
                         self.check_and_open_buff(buff)
                         confed = True
+                        # 配置阵容可能超过进场超时；刷新画面后再识别准备按钮。
+                        timeout_timer.reset()
+                        continue
                 # 点击准备(锁定阵容自动点准备,不锁定阵容前面也已经配置完毕需要点准备)
                 if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                    timeout_timer.reset()
                     continue
                 continue
             # 未知界面, 既不是准备界面也不是战斗界面
@@ -174,6 +178,11 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
         win: bool = False
         while 1:
             self.screenshot()
+            # 准备点击未生效或进场较慢时继续尝试，避免只等结算。
+            if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                logger.info("Retry prepare before battle")
+                self.device.stuck_record_add('BATTLE_STATUS_S')
+                continue
             # 如果出现赢 就点击, 第二个是针对封魔的图片
             if self.appear(self.I_WIN, threshold=0.8) or self.appear(self.I_DE_WIN):
                 logger.info("Battle result is win")
@@ -267,6 +276,11 @@ class GeneralBattle(BattleWait, GeneralBuff, GeneralBattleAssets):
         logger.info("Start battle process")
         while 1:
             self.screenshot()
+            # 准备点击未生效或进场较慢时继续尝试，避免只等结算。
+            if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                logger.info("Retry prepare before battle")
+                self.device.stuck_record_add('BATTLE_STATUS_S')
+                continue
             # 出现赢的鼓，点击直到消失
             if self.appear_then_click(self.I_WIN, interval=0.8):
                 continue

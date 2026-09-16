@@ -2,10 +2,10 @@
   {
     "itemName": "shi",
     "imageName": "as_shi.png",
-    "roiFront": "1187,463,39,28",
+    "roiFront": "1186,215,46,45",
     "roiBack": "1165,128,83,393",
     "method": "Template matching",
-    "threshold": 0.7,
+    "threshold": 0.75,
     "description": "进入活动"
   },
   {
@@ -38,10 +38,10 @@
   {
     "itemName": "to_battle_main",
     "imageName": "as_to_battle_main.png",
-    "roiFront": "600,418,38,152",
-    "roiBack": "499,347,238,269",
+    "roiFront": "349,180,53,92",
+    "roiBack": "310,145,125,150",
     "method": "Template matching",
-    "threshold": 0.8,
+    "threshold": 0.75,
     "description": "进入主要的战斗界面"
   },
   {
@@ -83,10 +83,10 @@
   {
     "itemName": "to_battle_main_2",
     "imageName": "as_to_battle_main_2.png",
-    "roiFront": "15,94,247,38",
-    "roiBack": "2,68,311,100",
+    "roiFront": "77,97,119,29",
+    "roiBack": "63,82,162,60",
     "method": "Template matching",
-    "threshold": 0.65,
+    "threshold": 0.8,
     "description": "description"
   },
   {

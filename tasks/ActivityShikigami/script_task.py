@@ -19,7 +19,7 @@ from module.exception import TaskEnd
 from module.logger import logger
 
 from tasks.base_task import BaseTask
-from tasks.Component.GeneralBattle.battle_wait import battle_wait_strategy
+from tasks.Component.GeneralBattle.battle_wait import battle_wait_strategy, BattleWaitContext, HookSignal
 from tasks.Component.GeneralBattle.config_general_battle import GeneralBattleConfig
 from tasks.ActivityShikigami.assets import ActivityShikigamiAssets
 from tasks.ActivityShikigami.config import SwitchSoulConfig, GeneralBattleConfig, ActivityShikigami
@@ -340,9 +340,26 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
     #             self.random_click_swipt()
     #     return True
 
-    @battle_wait_strategy('reserve_default', 'idle_default', failure='default', success='soul')
+    @battle_wait_strategy('reserve_default', 'idle_default', failure='default', success='activity')
     def battle_wait(self, *args, **kwargs):
         return self.battle_wait_with_strategy(*args, **kwargs)
+
+    C_ACTIVITY_REWARD_CONTINUE = RuleClick(roi_front=(550, 675, 180, 30), roi_back=(550, 675, 180, 30), name='activity_reward_continue')
+
+    def _bw_success_activity(self, bw_ctx: BattleWaitContext) -> HookSignal:
+        # 活动直接弹出“获得奖励”，不经过御魂结算的达摩画面。
+        if self.appear(self.I_UI_REWARD):
+            bw_ctx.activity_reward_seen = True
+            self.click(self.C_ACTIVITY_REWARD_CONTINUE, interval=1.5)
+            return HookSignal.CONTINUE
+        if bw_ctx.activity_reward_seen:
+            # 弹窗消失可能只是转场；确认回到挑战页后才结束本场。
+            if self.appear(self.I_CHECK_BATTLE_MAIN) or self.appear(self.I_CHECK_BATTLE_BOSS):
+                logger.info('Activity reward collected; returned to challenge page')
+                bw_ctx.success = True
+                bw_ctx.completion = True
+            return HookSignal.CONTINUE
+        return self._bw_success_soul(bw_ctx)
 
     def switch_soul(self, enter_button: RuleImage, cur_img: RuleImage):
         conf = self.conf.switch_soul_config
@@ -395,7 +412,10 @@ class ScriptTask(StateMachine, GameUi, BaseActivity, SwitchSoul, ActivityShikiga
         if self.climb_type == 'pass':
             remain_times = self.O_REMAIN_PASS.ocr_digit(self.device.image)
         if self.climb_type == 'ap':
-            remain_times = self.O_REMAIN_AP.ocr_digit(self.device.image)
+            # 拾光永恒：一次体力挑战同时消耗 6 体力和 1 个活动道具。
+            stamina = self.O_REMAIN_AP.ocr(self.device.image)
+            items = self.O_REMAIN_AP_ITEM.ocr(self.device.image)
+            return stamina >= 6 and items >= 1
         if self.climb_type == 'boss':
             _, remain_times, _ = self.O_REMAIN_BOSS.ocr_digit_counter(self.device.image)
         if self.climb_type == 'ap100':
@@ -441,5 +461,3 @@ if __name__ == '__main__':
     t = ScriptTask(c, d)
 
     t.run()
-
-

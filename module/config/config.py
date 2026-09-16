@@ -6,6 +6,7 @@ import datetime
 import operator
 import threading
 import random
+from pathlib import Path
 
 from datetime import datetime, timedelta
 from cached_property import cached_property
@@ -19,6 +20,7 @@ from module.config.config_menu import ConfigMenu
 from module.config.config_model import ConfigModel
 from module.config.config_state import ConfigState
 from module.config.scheduler import TaskScheduler
+from module.config.task_windows import WindowPlanner, WindowState
 from module.config.utils import *
 from module.notify.notify import Notifier
 
@@ -183,13 +185,19 @@ class Config(ConfigState, ConfigManual, ConfigWatcher, ConfigMenu):
         waiting_task = []
         error = []
         self.scheduler_update_dt = datetime.now()
+        planner = self.window_planner
+        records = planner.state.read() if planner.settings.enabled else None
         for key, value in self.model.dict().items():
             func = Function(key, value)
             if not func.enable:
                 continue
+            func.original_next_run = func.next_run
+            func.batch = None
+            if isinstance(func.next_run, datetime) and self.model.running_task != func.command:
+                func.next_run, func.batch = planner.next(func.command, func.next_run, self.scheduler_update_dt, records)
             if not isinstance(func.next_run, datetime):
                 error.append(func)
-            elif func.next_run < self.scheduler_update_dt:
+            elif func.next_run <= self.scheduler_update_dt:
                 pending_task.append(func)
             else:
                 waiting_task.append(func)
@@ -214,6 +222,17 @@ class Config(ConfigState, ConfigManual, ConfigWatcher, ConfigMenu):
 
         self.pending_task = pending_task
         self.waiting_task = waiting_task
+
+    @property
+    def window_planner(self):
+        return WindowPlanner(self.model.script.task_windows,
+                             WindowState(Path('config') / 'task_windows' / f'{self.config_name}.json'))
+
+    @staticmethod
+    def schedule_item(task):
+        return {'name': task.command, 'next_run': str(task.next_run),
+                'original_next_run': str(getattr(task, 'original_next_run', task.next_run)),
+                'batch': getattr(task, 'batch', None)}
 
     def get_next(self) -> Function:
         """
@@ -249,17 +268,17 @@ class Config(ConfigState, ConfigManual, ConfigWatcher, ConfigMenu):
         # 根据调度器更新时间来判断是否有可运行的任务,保证逻辑一致性
         scheduler_update_dt = getattr(self, 'scheduler_update_dt', datetime.now())
         running = {}
-        if self.task is not None and self.task.next_run < scheduler_update_dt:
-            running = {"name": self.task.command, "next_run": str(self.task.next_run)}
+        if self.task is not None and self.task.next_run <= scheduler_update_dt:
+            running = self.schedule_item(self.task)
 
         pending = []
         for p in self.pending_task[1:]:
-            item = {"name": p.command, "next_run": str(p.next_run)}
+            item = self.schedule_item(p)
             pending.append(item)
 
         waiting = []
         for w in self.waiting_task:
-            item = {"name": w.command, "next_run": str(w.next_run)}
+            item = self.schedule_item(w)
             waiting.append(item)
 
         data = {"running": running, "pending": pending, "waiting": waiting}
@@ -283,6 +302,9 @@ class Config(ConfigState, ConfigManual, ConfigWatcher, ConfigMenu):
                 microsecond=0
             )
             self.model.deep_set(self.model, keys=f'{task}.scheduler.next_run', value=next_run)
+            command = ConfigModel.type(task)
+            if self.window_planner.group(command):
+                self.window_planner.state.force(command)
             self.save()
             return True
         else:
@@ -360,6 +382,19 @@ class Config(ConfigState, ConfigManual, ConfigWatcher, ConfigMenu):
                 next_run += timedelta(seconds=random_float)
             else:
                 next_run = parse_tomorrow_server(scheduler.server_update, scheduler.delay_date, random_float)
+
+        command = ConfigModel.type(task)
+        planner = self.window_planner
+        group = planner.group(command)
+        if group and self.model.running_task == command:
+            if success is True:
+                context = getattr(self, 'window_run_context', None)
+                cycle = (datetime.fromisoformat(context['cycle']).date()
+                         if context and context['command'] == command
+                         else planner.cycle(group, start_time.date()))
+                next_run = planner.after_success(command, cycle)
+            elif success is False:
+                next_run = datetime.now() + timedelta(minutes=planner.settings.retry_minutes)
 
         # 将这些连接起来，方便日志输出
         kv = dict_to_kv(

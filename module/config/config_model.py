@@ -408,7 +408,13 @@ class ConfigModel(ConfigBase):
 
         # 设置参数
         try:
-            setattr(group_object, argument, value)
+            if task == 'script' and group == 'task_windows':
+                # Validate a copy so rejected cross-field edits do not corrupt the cached model.
+                values = group_object.model_dump()
+                values[argument] = value
+                task_object.task_windows = type(group_object).model_validate(values)
+            else:
+                setattr(group_object, argument, value)
             logger.info(f'Set arg {self.config_name}.{task}.{group}.{argument}.{value}')
             self.save()  # 我是没有想到什么方法可以使得属性改变自动保存的
             return True
@@ -483,4 +489,3 @@ if __name__ == "__main__":
         c = ConfigModel()
 
     print(c.script_task('GuildBanquet'))
-

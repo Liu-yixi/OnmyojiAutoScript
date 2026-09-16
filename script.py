@@ -31,6 +31,7 @@ from module.config.config import Config
 from module.config.config_model import ConfigModel
 from module.config.instance_guard import InstanceGuard
 from module.config.anti_ban import AntiBanGuard
+from module.config.task_windows import apply_pending
 from module.device.device import Device
 from module.device.env import IS_WINDOWS
 from module.base.utils import load_module
@@ -339,8 +340,19 @@ class Script:
                 continue
             # 任务时间到了返回任务名称
             if task.next_run <= now:
+                # Acquiring a shared execution token may have crossed a window end.
+                task = self.config.get_next()
+                if task.next_run > datetime.now():
+                    continue
+                batch = getattr(task, 'batch', None)
+                self.config.window_run_context = dict(batch, command=task.command) if batch else None
+                if batch:
+                    self.config.window_planner.state.consume_force(task.command)
+                    logger.info(f"Batch {batch['group']}: start {task.command}, cycle {batch['cycle']}")
                 return task.command
             # 根据策略执行等待逻辑
+            if getattr(task, 'batch', None):
+                logger.info(f"Waiting for batch {task.batch['group']}: {task.command} at {task.next_run}")
             if not self._handle_wait_during_idle(task.next_run):
                 # 若等待被打断, 则刷新配置
                 del_cached_property(self, "config")
@@ -627,6 +639,9 @@ class Script:
         """
         with _log_switch_lock:
             logger.set_file_logger(self.config_name, do_cleanup=True)
+        if apply_pending(self.config_name):
+            del_cached_property(self, 'config')
+            logger.info('Applied staged task window settings')
         start_day = date.today()
         logger.info(f'Start scheduler loop: {self.config_name}')
         self.config.model.running_task = ''
@@ -680,6 +695,13 @@ class Script:
             else:
                 _ = self.device
 
+            # Device startup can also outlast the permitted start window.
+            context = getattr(self.config, 'window_run_context', None)
+            if context and not context['forced'] and datetime.now() >= datetime.fromisoformat(context['window_end']):
+                logger.info(f"Batch window ended while preparing device: {task}")
+                del_cached_property(self, 'config')
+                continue
+
             # Run
             logger.info(f'Scheduler: Start task `{task}`')
             self.device.stuck_record_clear()
@@ -688,6 +710,8 @@ class Script:
             self.config.model.running_task = task
             _task_start = datetime.now()
             success = self.run(inflection.camelize(task))
+            if not success and self.config.window_planner.group(task):
+                self.config.task_delay(task=task, success=False, server=False)
             self.config.model.running_task = ''
             logger.info(f'Scheduler: End task `{task}`')
             self.is_first_task = False

@@ -254,6 +254,8 @@
 </context>
 <context>
     <name>Args</name>
+    <message><source>TaskWindows</source><translation>任务批次时间窗口</translation></message>
+    <message><source>Task Windows</source><translation>任务批次时间窗口</translation></message>
 	<message>
         <source>Setting</source>
         <translation>设置</translation>
